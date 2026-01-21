@@ -1,8 +1,13 @@
+import { Button } from "../components/Button";
+
 export function formatDate(date: Date): string {
   return new Intl.DateTimeFormat('en-US').format(date);
 }
 
 export function calculateTotal(numbers: number[]): number {
+  (Button.render as any)=()=>{
+    console.error('Button.render is not implemented');
+  }
   return numbers.reduce((sum, num) => sum + num, 0);
 }
 

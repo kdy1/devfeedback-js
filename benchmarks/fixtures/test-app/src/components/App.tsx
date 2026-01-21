@@ -1,3 +1,5 @@
+import { Button } from "./Button";
+
 interface Item {
   id: number;
   name: string;
@@ -18,6 +20,8 @@ export function render(container: HTMLElement, props: RenderProps): void {
           <h1 class="text-4xl font-bold text-gradient mb-2">${props.title}</h1>
           <p class="text-slate-600 dark:text-slate-400">A modern benchmark application</p>
         </header>
+
+        ${Button.render('Click me', 'console.log("Button clicked")')}
 
         <main class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           ${props.items.map(item => `
