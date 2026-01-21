@@ -1,3 +1,24 @@
+export interface BundleFileInfo {
+  name: string;
+  size: number;
+  type: 'chunk' | 'asset';
+}
+
+export interface BundleAnalysis {
+  totalFiles: number;
+  totalSizeBytes: number;
+  files: BundleFileInfo[];
+  // Breakdown by type
+  chunks: {
+    count: number;
+    totalSize: number;
+  };
+  assets: {
+    count: number;
+    totalSize: number;
+  };
+}
+
 export interface CommonMetadata {
   id: string;
   userName: string;
@@ -19,6 +40,14 @@ export interface CommonMetadata {
   v8Version: string;
   commitSha: string;
   customIdentifier: string | null;
+  // Build complexity metrics
+  totalModulesProcessed: number;
+  totalOutputSizeBytes: number;
+  buildMode: 'development' | 'production' | 'unknown';
+  // Additional bundler tool versions (vite, esbuild, rollup, etc.)
+  bundlerVersions?: Record<string, string>;
+  // Bundle analysis
+  bundleAnalysis?: BundleAnalysis;
 }
 
 export interface RspackBuildData extends CommonMetadata {
@@ -53,4 +82,7 @@ export interface ViteBuildData extends CommonMetadata {
   viteVersion: string | null;
   bundleStats?: ViteBundleStats;
   file: string | null;
+  // Cache effectiveness metrics
+  nbrOfCachedModules: number;
+  nbrOfRebuiltModules: number;
 }

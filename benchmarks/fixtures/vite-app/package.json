@@ -1,0 +1,10 @@
+{
+  "name": "vite-benchmark-app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "build:clean": "rm -rf ../../../dist/vite-app node_modules/.vite && vite build"
+  }
+}

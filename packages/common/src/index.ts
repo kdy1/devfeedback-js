@@ -8,5 +8,7 @@ export type {
     RspackBuildData,
     WebpackBuildData,
     DevFeedbackEvent,
-    ViteBundleStats
+    ViteBundleStats,
+    BundleAnalysis,
+    BundleFileInfo
 } from './lib/types';

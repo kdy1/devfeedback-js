@@ -1,0 +1,10 @@
+{
+  "name": "rspack-optimized-benchmark-app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "rspack build",
+    "build:clean": "rm -rf ../../dist/rspack-optimized node_modules/.cache && rspack build"
+  }
+}

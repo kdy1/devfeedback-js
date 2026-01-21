@@ -6,7 +6,7 @@ import path from 'node:path';
 import { createServer, Server } from 'node:http';
 
 import { getCommonMetadata, sendBuildData } from 'agoda-devfeedback-common';
-import type { WebpackBuildData, DevFeedbackEvent } from 'agoda-devfeedback-common';
+import type { WebpackBuildData, DevFeedbackEvent, BundleAnalysis, BundleFileInfo } from 'agoda-devfeedback-common';
 
 export class WebpackBuildStatsPlugin {
   private readonly customIdentifier: string | undefined;
@@ -77,15 +77,56 @@ export class WebpackBuildStatsPlugin {
         hash: true,
         version: true,
         modules: true,
+        assets: true,
       });
 
+      const cachedModules = jsonStats.modules?.filter((m) => m.cached).length ?? 0;
+      const rebuiltModules = jsonStats.modules?.filter((m) => m.built).length ?? 0;
+      const totalModulesProcessed = cachedModules + rebuiltModules;
+      const totalOutputSizeBytes = jsonStats.assets?.reduce((sum, asset) => sum + (asset.size || 0), 0) ?? 0;
+
+      const bundlerVersions: Record<string, string> = {};
+      if (jsonStats.version) {
+        bundlerVersions.webpack = jsonStats.version;
+      }
+
+      // Create bundle analysis
+      const bundleFiles: BundleFileInfo[] = (jsonStats.assets || []).map(asset => ({
+        name: asset.name || 'unknown',
+        size: asset.size || 0,
+        type: asset.name?.endsWith('.js') || asset.name?.endsWith('.mjs') ? 'chunk' : 'asset',
+      }));
+
+      const chunks = bundleFiles.filter(f => f.type === 'chunk');
+      const assets = bundleFiles.filter(f => f.type === 'asset');
+
+      const bundleAnalysis: BundleAnalysis = {
+        totalFiles: bundleFiles.length,
+        totalSizeBytes: totalOutputSizeBytes,
+        files: bundleFiles,
+        chunks: {
+          count: chunks.length,
+          totalSize: chunks.reduce((sum, f) => sum + f.size, 0),
+        },
+        assets: {
+          count: assets.length,
+          totalSize: assets.reduce((sum, f) => sum + f.size, 0),
+        },
+      };
+
       const buildStats: WebpackBuildData = {
-        ...getCommonMetadata(jsonStats.time ?? -1, this.customIdentifier),
+        ...getCommonMetadata(jsonStats.time ?? -1, this.customIdentifier, {
+          totalModulesProcessed,
+          totalOutputSizeBytes,
+          buildMode: process.env.NODE_ENV === 'production' ? 'production' : 'development',
+          bundlerVersions,
+          bundleAnalysis,
+        }),
         type: 'webpack',
         compilationHash: jsonStats.hash ?? null,
         toolVersion: jsonStats.version ?? null,
-        nbrOfCachedModules: jsonStats.modules?.filter((m) => m.cached).length ?? 0,
-        nbrOfRebuiltModules: jsonStats.modules?.filter((m) => m.built).length ?? 0,
+        nbrOfCachedModules: cachedModules,
+        nbrOfRebuiltModules: rebuiltModules,
 
         // Attach dev feedback events
         devFeedback: this.devFeedbackBuffer,

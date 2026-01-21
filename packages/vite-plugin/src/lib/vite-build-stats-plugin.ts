@@ -4,7 +4,7 @@ import { Blob } from 'node:buffer';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'http';
 
-import type { ViteBuildData, ViteBundleStats } from 'agoda-devfeedback-common';
+import type { ViteBuildData, ViteBundleStats, BundleAnalysis, BundleFileInfo } from 'agoda-devfeedback-common';
 import { getCommonMetadata, sendBuildData } from 'agoda-devfeedback-common';
 
 interface TimingEntry {
@@ -21,6 +21,28 @@ export interface ViteTimingPlugin extends Plugin {
   _TEST_getChangeMap?: () => Map<string, TimingEntry>;
 }
 
+function getToolVersions(): Record<string, string> {
+  const versions: Record<string, string> = {};
+
+  try {
+    // Try to get Vite version - use dynamic require for ESM compatibility
+    const vitePackage = require('vite/package.json');
+    versions.vite = vitePackage.version || 'unknown';
+  } catch {
+    // Vite version not available
+  }
+
+  try {
+    // Try to get esbuild version
+    const esbuildPackage = require('esbuild/package.json');
+    versions.esbuild = esbuildPackage.version || 'unknown';
+  } catch {
+    // esbuild version not available
+  }
+
+  return versions;
+}
+
 export function viteBuildStatsPlugin(
   customIdentifier: string | undefined = process.env.npm_lifecycle_event,
   bootstrapBundleSizeLimitKb?: number,
@@ -29,6 +51,9 @@ export function viteBuildStatsPlugin(
   let buildEnd: number;
   let bootstrapChunkSizeBytes: number | undefined = undefined;
   let rollupVersion: string | undefined = undefined;
+  let totalModulesProcessed = 0;
+  let totalOutputSizeBytes = 0;
+  const bundleFiles: BundleFileInfo[] = [];
   const changeMap = new Map<string, TimingEntry>();
 
   const normalizePath = (filePath: string): string => {
@@ -95,7 +120,11 @@ export function viteBuildStatsPlugin(
                 const totalTime = clientTimestamp - entry.changeDetectedAt;
 
                 const metricsData: ViteBuildData = {
-                  ...getCommonMetadata(totalTime, customIdentifier),
+                  ...getCommonMetadata(totalTime, customIdentifier, {
+                    totalModulesProcessed: 0, // Not tracked for HMR
+                    totalOutputSizeBytes: 0, // Not tracked for HMR
+                    buildMode: 'development', // HMR is always development
+                  }),
                   type: 'vitehmr',
                   viteVersion: rollupVersion ?? null,
                   bundleStats: {
@@ -103,6 +132,8 @@ export function viteBuildStatsPlugin(
                     bootstrapChunkSizeLimitBytes: undefined,
                   },
                   file: entry.file,
+                  nbrOfCachedModules: 0, // Not tracked for HMR
+                  nbrOfRebuiltModules: 1, // Typically 1 file changed for HMR
                 };
 
                 await sendBuildData(metricsData);
@@ -174,13 +205,51 @@ export function viteBuildStatsPlugin(
 
     generateBundle(outputOptions: NormalizedOutputOptions, outputBundle: OutputBundle) {
       try {
-        for (const [, bundle] of Object.entries(outputBundle)) {
-          if (bundle.name === 'bootstrap' && bundle.type === 'chunk') {
-            bootstrapChunkSizeBytes = new Blob([bundle.code]).size;
+        totalOutputSizeBytes = 0;
+        totalModulesProcessed = 0;
+        bundleFiles.length = 0; // Clear previous data
+
+        for (const [fileName, bundle] of Object.entries(outputBundle)) {
+          if (bundle.type === 'chunk') {
+            const size = new Blob([bundle.code]).size;
+
+            // Calculate total output size
+            totalOutputSizeBytes += size;
+
+            // Track individual file
+            bundleFiles.push({
+              name: fileName,
+              size: size,
+              type: 'chunk',
+            });
+
+            // Count modules
+            if (bundle.modules) {
+              totalModulesProcessed += Object.keys(bundle.modules).length;
+            }
+
+            // Track bootstrap chunk specifically
+            if (bundle.name === 'bootstrap') {
+              bootstrapChunkSizeBytes = size;
+            }
+          } else if (bundle.type === 'asset') {
+            const size = typeof bundle.source === 'string'
+              ? bundle.source.length
+              : bundle.source.byteLength;
+
+            // Include asset sizes
+            totalOutputSizeBytes += size;
+
+            // Track individual file
+            bundleFiles.push({
+              name: fileName,
+              size: size,
+              type: 'asset',
+            });
           }
         }
       } catch (err) {
-        console.warn('Failed to measure bootstrap chunk size because of error', err);
+        console.warn('Failed to measure bundle statistics because of error', err);
       }
     },
 
@@ -193,12 +262,45 @@ export function viteBuildStatsPlugin(
             : undefined,
       };
 
+      const toolVersions = getToolVersions();
+      if (rollupVersion) {
+        toolVersions.rollup = rollupVersion;
+      }
+
+      // Create bundle analysis
+      const chunks = bundleFiles.filter(f => f.type === 'chunk');
+      const assets = bundleFiles.filter(f => f.type === 'asset');
+
+      const bundleAnalysis: BundleAnalysis = {
+        totalFiles: bundleFiles.length,
+        totalSizeBytes: totalOutputSizeBytes,
+        files: bundleFiles,
+        chunks: {
+          count: chunks.length,
+          totalSize: chunks.reduce((sum, f) => sum + f.size, 0),
+        },
+        assets: {
+          count: assets.length,
+          totalSize: assets.reduce((sum, f) => sum + f.size, 0),
+        },
+      };
+
       const buildStats: ViteBuildData = {
-        ...getCommonMetadata(buildEnd - buildStart, customIdentifier),
+        ...getCommonMetadata(buildEnd - buildStart, customIdentifier, {
+          totalModulesProcessed,
+          totalOutputSizeBytes,
+          buildMode: process.env.NODE_ENV === 'production' ? 'production' : 'development',
+          bundlerVersions: toolVersions,
+          bundleAnalysis,
+        }),
         type: 'vite',
         viteVersion: rollupVersion ?? null,
         bundleStats,
         file: null,
+        // Vite doesn't expose cache statistics in the same way, so we set these to 0
+        // In practice, Vite's caching is handled differently (HTTP cache, filesystem cache)
+        nbrOfCachedModules: 0,
+        nbrOfRebuiltModules: totalModulesProcessed,
       };
 
       await sendBuildData(buildStats);

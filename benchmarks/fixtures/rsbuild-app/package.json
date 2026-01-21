@@ -1,0 +1,10 @@
+{
+  "name": "rsbuild-benchmark-app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "rsbuild build",
+    "build:clean": "rm -rf ../../dist/rsbuild-app node_modules/.cache && rsbuild build"
+  }
+}

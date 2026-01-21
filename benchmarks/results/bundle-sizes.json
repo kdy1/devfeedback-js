@@ -1,0 +1,94 @@
+{
+    "results": [
+        {
+            "name": "Vite 7 + Rollup",
+            "total_bytes": 6288,
+            "total_human": "6.14KB",
+            "js_bytes": 1457,
+            "js_human": "1.42KB",
+            "css_bytes": 4831,
+            "css_human": "4.72KB",
+            "relative": 1.0
+        },
+        {
+            "name": "Vite 8 + Rolldown",
+            "total_bytes": 6306,
+            "total_human": "6.16KB",
+            "js_bytes": 2168,
+            "js_human": "2.12KB",
+            "css_bytes": 4138,
+            "css_human": "4.04KB",
+            "relative": 1.0
+        },
+        {
+            "name": "Rspack Standard",
+            "total_bytes": 19850,
+            "total_human": "19.38KB",
+            "js_bytes": 7757,
+            "js_human": "7.58KB",
+            "css_bytes": 12093,
+            "css_human": "11.81KB",
+            "relative": 3.16
+        },
+        {
+            "name": "Rspack + Incremental",
+            "total_bytes": 19850,
+            "total_human": "19.38KB",
+            "js_bytes": 7757,
+            "js_human": "7.58KB",
+            "css_bytes": 12093,
+            "css_human": "11.81KB",
+            "relative": 3.16
+        },
+        {
+            "name": "Rspack + ParallelLoader",
+            "total_bytes": 19850,
+            "total_human": "19.38KB",
+            "js_bytes": 7757,
+            "js_human": "7.58KB",
+            "css_bytes": 12093,
+            "css_human": "11.81KB",
+            "relative": 3.16
+        },
+        {
+            "name": "Rspack + Persistent Cache",
+            "total_bytes": 19850,
+            "total_human": "19.38KB",
+            "js_bytes": 7757,
+            "js_human": "7.58KB",
+            "css_bytes": 12093,
+            "css_human": "11.81KB",
+            "relative": 3.16
+        },
+        {
+            "name": "Rspack Optimized",
+            "total_bytes": 19850,
+            "total_human": "19.38KB",
+            "js_bytes": 7757,
+            "js_human": "7.58KB",
+            "css_bytes": 12093,
+            "css_human": "11.81KB",
+            "relative": 3.16
+        },
+        {
+            "name": "Rsbuild Standard",
+            "total_bytes": 37573,
+            "total_human": "36.69KB",
+            "js_bytes": 8541,
+            "js_human": "8.34KB",
+            "css_bytes": 29032,
+            "css_human": "28.35KB",
+            "relative": 5.98
+        },
+        {
+            "name": "Rsbuild Optimized",
+            "total_bytes": 37593,
+            "total_human": "36.71KB",
+            "js_bytes": 8561,
+            "js_human": "8.36KB",
+            "css_bytes": 29032,
+            "css_human": "28.35KB",
+            "relative": 5.98
+        }
+    ]
+}

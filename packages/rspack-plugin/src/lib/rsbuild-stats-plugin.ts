@@ -4,7 +4,7 @@ import { WebSocketServer } from 'ws';
 import path from 'node:path';
 import { createServer } from 'node:http';
 import { getCommonMetadata, sendBuildData } from 'agoda-devfeedback-common';
-import type { RspackBuildData, DevFeedbackEvent } from 'agoda-devfeedback-common';
+import type { RspackBuildData, DevFeedbackEvent, BundleAnalysis, BundleFileInfo } from 'agoda-devfeedback-common';
 import { Rspack, rspack } from '@rsbuild/core';
 
 export const RsbuildBuildStatsPlugin: RsbuildPlugin = {
@@ -12,6 +12,7 @@ export const RsbuildBuildStatsPlugin: RsbuildPlugin = {
   async setup(api: RsbuildPluginAPI) {
     const customIdentifier = process.env.npm_lifecycle_event;
     let devFeedbackBuffer: DevFeedbackEvent[] = [];
+    let buildStartTime = 0;
 
     // Retrieve the Rsbuild core version from the context
     const rspackVersion = api.context.version;
@@ -33,6 +34,7 @@ export const RsbuildBuildStatsPlugin: RsbuildPlugin = {
 
     // Hook into the build start (production)
     api.onBeforeBuild(() => {
+      buildStartTime = Date.now();
       devFeedbackBuffer = [];
     });
 
@@ -49,6 +51,7 @@ export const RsbuildBuildStatsPlugin: RsbuildPlugin = {
     // Hook into the dev server start
     api.onBeforeStartDevServer(() => {
       console.log('[RsbuildBuildStatsPlugin] Development server is starting...');
+      buildStartTime = Date.now();
       devFeedbackBuffer = [];
     });
 
@@ -70,17 +73,59 @@ export const RsbuildBuildStatsPlugin: RsbuildPlugin = {
 
     // Shared function to process stats
     async function processStats(stats: Rspack.Stats | Rspack.MultiStats) {
+      const buildEndTime = Date.now();
       recordEvent(stats, { type: 'compileDone' });
 
-      // Calculate timeTaken
-      const startTime = getStartTime(stats);
-      const endTime = getEndTime(stats);
-      const timeTaken = startTime !== null && endTime !== null ? endTime - startTime : -1;
+      // Calculate timeTaken using manual timing
+      const timeTaken = buildStartTime > 0 ? buildEndTime - buildStartTime : -1;
 
       // Collect build stats
       const modulesCount = getModulesCount(stats);
+      const statsJson = stats instanceof rspack.MultiStats
+        ? (stats.stats[0]?.toJson({ all: false, assets: true }) ?? { assets: [] })
+        : stats.toJson({ all: false, assets: true });
+
+      const totalOutputSizeBytes = statsJson.assets?.reduce((sum, asset) => sum + (asset.size || 0), 0) || 0;
+      const totalModulesProcessed = modulesCount.cached + modulesCount.rebuilt;
+
+      const bundlerVersions: Record<string, string> = {};
+      if (rspackVersion) {
+        bundlerVersions.rsbuild = rspackVersion;
+        bundlerVersions.rspack = rspackVersion; // rsbuild uses rspack under the hood
+      }
+
+      // Create bundle analysis
+      const bundleFiles: BundleFileInfo[] = (statsJson.assets || []).map(asset => ({
+        name: asset.name || 'unknown',
+        size: asset.size || 0,
+        type: asset.name?.endsWith('.js') || asset.name?.endsWith('.mjs') ? 'chunk' : 'asset',
+      }));
+
+      const chunks = bundleFiles.filter(f => f.type === 'chunk');
+      const assets = bundleFiles.filter(f => f.type === 'asset');
+
+      const bundleAnalysis: BundleAnalysis = {
+        totalFiles: bundleFiles.length,
+        totalSizeBytes: totalOutputSizeBytes,
+        files: bundleFiles,
+        chunks: {
+          count: chunks.length,
+          totalSize: chunks.reduce((sum, f) => sum + f.size, 0),
+        },
+        assets: {
+          count: assets.length,
+          totalSize: assets.reduce((sum, f) => sum + f.size, 0),
+        },
+      };
+
       const buildStats: RspackBuildData = {
-        ...getCommonMetadata(timeTaken, customIdentifier), // Pass timeTaken to getCommonMetadata
+        ...getCommonMetadata(timeTaken, customIdentifier, {
+          totalModulesProcessed,
+          totalOutputSizeBytes,
+          buildMode: process.env.NODE_ENV === 'production' ? 'production' : 'development',
+          bundlerVersions,
+          bundleAnalysis,
+        }),
         type: 'rsbuild',
         compilationHash: getHash(stats),
         toolVersion: rspackVersion, // Use the version from api.context.version
@@ -99,8 +144,7 @@ export const RsbuildBuildStatsPlugin: RsbuildPlugin = {
       partial: Omit<DevFeedbackEvent, 'elapsedMs'>,
     ) {
       const now = Date.now();
-      const startTime = getStartTime(stats);
-      const elapsedMs = startTime !== null ? now - startTime : 0; // Use stats.startTime if available
+      const elapsedMs = buildStartTime > 0 ? now - buildStartTime : 0;
       const fileNormalized = partial.file ? normalizePath(partial.file) : undefined;
 
       devFeedbackBuffer.push({
@@ -127,30 +171,6 @@ export const RsbuildBuildStatsPlugin: RsbuildPlugin = {
     // Normalize file paths
     function normalizePath(filePath: string): string {
       return path.relative(process.cwd(), path.normalize(filePath));
-    }
-
-    // Extract start time from Stats or MultiStats
-    function getStartTime(stats?: Rspack.Stats | Rspack.MultiStats): number | null {
-      if (!stats) return null;
-      if (stats instanceof rspack.MultiStats) {
-        const startTimes = stats.stats
-          .map((s) => s.startTime ?? null)
-          .filter((t) => t !== null);
-        return startTimes.length > 0 ? Math.min(...startTimes) : null;
-      }
-      return stats.startTime ?? null;
-    }
-
-    // Extract end time from Stats or MultiStats
-    function getEndTime(stats?: Rspack.Stats | Rspack.MultiStats): number | null {
-      if (!stats) return null;
-      if (stats instanceof rspack.MultiStats) {
-        const endTimes = stats.stats
-          .map((s) => s.endTime ?? null)
-          .filter((t) => t !== null);
-        return endTimes.length > 0 ? Math.max(...endTimes) : null;
-      }
-      return stats.endTime ?? null;
     }
 
     // Extract hash from Stats or MultiStats

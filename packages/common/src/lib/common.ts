@@ -20,9 +20,18 @@ const runGitCommand = (args: string[]): string | undefined => {
   return result;
 };
 
+import type { BundleAnalysis } from './types.ts';
+
 export const getCommonMetadata = (
   timeTaken: number,
   customIdentifier: string = process.env.npm_lifecycle_event ?? UNKNOWN_VALUE,
+  buildComplexity?: {
+    totalModulesProcessed?: number;
+    totalOutputSizeBytes?: number;
+    buildMode?: 'development' | 'production' | 'unknown';
+    bundlerVersions?: Record<string, string>;
+    bundleAnalysis?: BundleAnalysis;
+  },
 ): CommonMetadata => {
   const repoUrl = runGitCommand(['config', '--get', 'remote.origin.url']);
   let repoName = repoUrl
@@ -36,6 +45,16 @@ export const getCommonMetadata = (
     () => process.env['GITLAB_USER_LOGIN'] ?? process.env['GITHUB_ACTOR'],
   );
   const { data: osUsername } = safelyTry(() => os.userInfo().username);
+
+  // Infer build mode from NODE_ENV if not provided
+  let buildMode: 'development' | 'production' | 'unknown' = 'unknown';
+  if (buildComplexity?.buildMode) {
+    buildMode = buildComplexity.buildMode;
+  } else if (process.env.NODE_ENV === 'production') {
+    buildMode = 'production';
+  } else if (process.env.NODE_ENV === 'development') {
+    buildMode = 'development';
+  }
 
   return {
     id: uuidv1(),
@@ -58,6 +77,12 @@ export const getCommonMetadata = (
     v8Version: process.versions.v8,
     commitSha: runGitCommand(['rev-parse', 'HEAD']) ?? UNKNOWN_VALUE,
     customIdentifier: customIdentifier,
+    // Build complexity metrics
+    totalModulesProcessed: buildComplexity?.totalModulesProcessed ?? 0,
+    totalOutputSizeBytes: buildComplexity?.totalOutputSizeBytes ?? 0,
+    buildMode: buildMode,
+    bundlerVersions: buildComplexity?.bundlerVersions,
+    bundleAnalysis: buildComplexity?.bundleAnalysis,
   };
 };
 
